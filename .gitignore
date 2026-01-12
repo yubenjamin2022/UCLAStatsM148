@@ -2,5 +2,8 @@
 data/
 *.csv
 
+data/
+*.parquet
+
 # Jupyter-related files
 .ipynb_checkpoints/
