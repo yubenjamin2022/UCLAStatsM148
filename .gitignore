@@ -7,3 +7,6 @@ data/
 
 # Jupyter-related files
 .ipynb_checkpoints/
+
+# Pycache files
+__pycache__/
