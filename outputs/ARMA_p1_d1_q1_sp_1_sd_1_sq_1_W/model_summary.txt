@@ -1,0 +1,27 @@
+                                    SARIMAX Results                                     
+========================================================================================
+Dep. Variable:                                y   No. Observations:                  114
+Model:             ARIMA(1, 1, 1)x(1, 1, 1, 52)   Log Likelihood                 -51.325
+Date:                          Wed, 25 Feb 2026   AIC                            112.649
+Time:                                  21:59:43   BIC                            112.379
+Sample:                              11-29-2020   HQIC                           109.306
+                                   - 01-29-2023                                         
+Covariance Type:                            opg                                         
+==============================================================================
+                 coef    std err          z      P>|z|      [0.025      0.975]
+------------------------------------------------------------------------------
+ar.L1          0.3082      0.411      0.750      0.453      -0.497       1.113
+ma.L1          1.0000      0.947      1.056      0.291      -0.856       2.856
+ar.S.L52       0.2535      0.109      2.317      0.021       0.039       0.468
+ma.S.L52      -0.3483      0.537     -0.649      0.516      -1.401       0.704
+sigma2      1.218e+05   7.78e-06   1.57e+10      0.000    1.22e+05    1.22e+05
+===================================================================================
+Ljung-Box (L1) (Q):                   0.12   Jarque-Bera (JB):                 0.68
+Prob(Q):                              0.73   Prob(JB):                         0.71
+Heteroskedasticity (H):               0.72   Skew:                             0.07
+Prob(H) (two-sided):                  0.84   Kurtosis:                         1.48
+===================================================================================
+
+Warnings:
+[1] Covariance matrix calculated using the outer product of gradients (complex-step).
+[2] Covariance matrix is singular or near-singular, with condition number 3.6e+26. Standard errors may be unstable.

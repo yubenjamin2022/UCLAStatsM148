@@ -1,0 +1,12 @@
+--- Prophet Model Parameters ---
+Growth Type: linear
+Yearly Seasonality: False
+Weekly Seasonality: False
+Daily Seasonality: False
+Custom Annual Fourier Order: 1
+Winter Holidays Included: True
+
+Fitted Growth rate (k): -0.47090535
+Fitted Offset (m): 0.72853325
+
+Forecasted future periods: 24 months
