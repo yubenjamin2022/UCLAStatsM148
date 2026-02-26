@@ -68,15 +68,33 @@ def create_journey_features(input_file, output_file):
           "--------------------------")
     
     df = pd.read_parquet(input_file)
-    print("Successfully read in file.")
+    df2 = pd.read_parquet("data/train_data2_flattened.parquet")
+    print("Successfully read in files.")
+
+    df['customer_id'] = df['id'].apply(lambda x: x.split(' ')[0])
+    df2['customer_id'] = df2['id'].apply(lambda x: x.split(' ')[0])
+    df2['successful'] = [28 in row.events for row in df2.itertuples(index=False)]
+    df2['start_date'] = [pd.Timestamp(row.timestamps[0], tz='UTC') for row in df2.itertuples(index=False)]
+
+    num_previous_journeys = []
+    num_successful_journeys = []
 
     first_timestamps = []
     current_datetime = pd.Timestamp('2000-01-01 00:00:00+0000', tz='UTC') # Dummy value for last recorded timestamp in dataset
     for row in df.itertuples(index=False):
-        first_timestamps.append(pd.Timestamp(row.timestamps[0], tz='UTC'))
+        start_timestamp = pd.Timestamp(row.timestamps[0], tz='UTC')
+        first_timestamps.append(start_timestamp)
         end_timestamp = pd.Timestamp(row.timestamps[-1], tz='UTC')
         if end_timestamp > current_datetime:
             current_datetime = end_timestamp
+
+        past_journeys = df2[(df2['customer_id'] == row.customer_id) & (df2['start_date'] < start_timestamp)]
+        num_previous = past_journeys.shape[0]
+        num_previous_journeys.append(num_previous)
+        if num_previous > 0:
+            num_successful_journeys.append(past_journeys[past_journeys['successful']].shape[0])
+        else:
+            num_successful_journeys.append(0)
 
     df['start_timestamp'] = first_timestamps
     df['current_datetime'] = current_datetime
@@ -84,6 +102,12 @@ def create_journey_features(input_file, output_file):
 
     df['days_into_journey'] = [(current_datetime - first_datetime) / np.timedelta64(1, 'D') for current_datetime, first_datetime in zip(df['current_datetime'], df['start_timestamp'])]
     print("Added number of days since the journey began.")
+
+    df.drop(columns=['customer_id'], inplace=True)
+
+    df['num_previous_journeys'] = num_previous_journeys
+    df['num_successful_journeys'] = num_successful_journeys
+    print("Added number of previous and successful journeys.")
 
     for i in range(1, 30):
         if i not in (17, 25, 28):
@@ -143,6 +167,13 @@ def create_journey_features(input_file, output_file):
     for milestone in range(1, 6):
         df[f'days_to_milestone_{milestone}'] = [(timestamps[np.where(np.isin(events, milestone_to_events[milestone]))[0][0]] - timestamps[0]) / np.timedelta64(1, 'D') if indicator else np.nan for timestamps, events, indicator in zip(df['timestamps'], df['events'], df[f'reached_milestone_{milestone}'])]
     print("Added the number of days until each milestone was achieved during the journey.")
+
+    df['customer_id'] = df['id'].apply(lambda x: x.split(' ')[0])
+    
+    df2 = pd.read_parquet("data/train_data2_flattened.parquet")
+    df2['customer_id'] = df2['id'].apply(lambda x: x.split(' ')[0])
+    df2['successful'] = [28 in row.events for row in df2.itertuples(index=False)]
+    df2['start_date'] = [pd.Timestamp(row.timestamps[0], tz='UTC') for row in df2.itertuples(index=False)]
 
     df.to_parquet(f'data/{output_file}.parquet', index=False)
     print("Successfully created parquet file.")
