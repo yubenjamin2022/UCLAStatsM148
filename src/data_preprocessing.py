@@ -71,73 +71,52 @@ def create_journey_features(input_file, output_file):
     df2 = pd.read_parquet("data/train_data2_flattened.parquet")
     print("Successfully read in files.")
 
-    df['customer_id'] = df['id'].apply(lambda x: x.split(' ')[0])
-    df2['customer_id'] = df2['id'].apply(lambda x: x.split(' ')[0])
-    df2['successful'] = [28 in row.events for row in df2.itertuples(index=False)]
-    df2['start_date'] = [pd.Timestamp(row.timestamps[0], tz='UTC') for row in df2.itertuples(index=False)]
+    df['customer_id'] = df['id'].str.partition(' ')[0].astype('str')
+    df2['customer_id'] = df2['id'].str.partition(' ')[0].astype('str')
 
-    num_previous_journeys = []
-    num_successful_journeys = []
+    df['start_date'] = pd.to_datetime(df['timestamps'].str[0], utc=True)
+    df['end_timestamp'] = pd.to_datetime(df['timestamps'].str[-1], utc=True)
+    df2['start_date'] = pd.to_datetime(df2['timestamps'].str[0], utc=True)
 
-    first_timestamps = []
-    current_datetime = pd.Timestamp('2000-01-01 00:00:00+0000', tz='UTC') # Dummy value for last recorded timestamp in dataset
-    for row in df.itertuples(index=False):
-        start_timestamp = pd.Timestamp(row.timestamps[0], tz='UTC')
-        first_timestamps.append(start_timestamp)
-        end_timestamp = pd.Timestamp(row.timestamps[-1], tz='UTC')
-        if end_timestamp > current_datetime:
-            current_datetime = end_timestamp
+    current_datetime = df['end_timestamp'].max()
 
-        past_journeys = df2[(df2['customer_id'] == row.customer_id) & (df2['start_date'] < start_timestamp)]
-        num_previous = past_journeys.shape[0]
-        num_previous_journeys.append(num_previous)
-        if num_previous > 0:
-            num_successful_journeys.append(past_journeys[past_journeys['successful']].shape[0])
-        else:
-            num_successful_journeys.append(0)
-
-    df['start_timestamp'] = first_timestamps
     df['current_datetime'] = current_datetime
     df['end_timestamp'] = current_datetime
 
-    df['days_into_journey'] = [(current_datetime - first_datetime) / np.timedelta64(1, 'D') for current_datetime, first_datetime in zip(df['current_datetime'], df['start_timestamp'])]
+
+    df2['successful'] = df2['events'].map(lambda x: 28 in x).astype('int8')
+    df2 = df2.sort_values(['customer_id', 'start_date'])
+
+    g2 = df2.groupby('customer_id', sort=False)
+    df2['cum_successful'] = g2['successful'].cumsum()
+
+    num_previous = np.zeros(len(df), dtype=np.int32)
+    num_successful = np.zeros(len(df), dtype=np.int32)
+
+    df_grouped = df.groupby('customer_id')
+    df2_grouped = df2.groupby('customer_id')
+
+    for cust_id, df_group in df_grouped:
+        if cust_id not in df2_grouped.groups:
+            continue
+
+        df2_group = df2_grouped.get_group(cust_id)
+        df2_dates = df2_group['start_date'].values
+        df_dates = df_group['start_date'].values
+
+        indices = np.searchsorted(df2_dates, df_dates, side='left')
+        num_previous[df_group.index] = indices
+        successful_cumsum = df2_group['cum_successful'].values
+
+        mask = indices > 0
+        num_successful[df_group.index[mask]] = successful_cumsum[indices[mask] - 1]
+    
+    df['num_previous_journeys'] = num_previous
+    df['num_successful_journeys'] = num_successful
+    print("Added date and previous journey information.")
+
+    df['days_into_journey'] = [(current_datetime - first_datetime) / np.timedelta64(1, 'D') for current_datetime, first_datetime in zip(df['current_datetime'], df['start_date'])]
     print("Added number of days since the journey began.")
-
-    df.drop(columns=['customer_id'], inplace=True)
-
-    df['num_previous_journeys'] = num_previous_journeys
-    df['num_successful_journeys'] = num_successful_journeys
-    print("Added number of previous and successful journeys.")
-
-    for i in range(1, 30):
-        if i not in (17, 25, 28):
-            df[f"event{i}"] = [i in ev for ev in df["events"]]
-    print("Added boolean indicators for whether each event id has occurred during the journey.")
-
-    df["time_diff_days"] = [
-        (cur - ts[-1]) / np.timedelta64(1, 'D') for ts, cur in zip(df["timestamps"], df["current_datetime"].dt.tz_localize(None))
-    ]
-    print("Added number of days since last action.")
-
-    quantiles = [0.25, 0.5, 0.75, 0.85, 0.9, 0.95, 1]
-    q_cols = [f"days_between_actions_q_{int(q*100)}" for q in quantiles]
-    def compute_row_quantiles(ts):
-        ts = np.asarray(ts)
-        if ts.size < 2:
-            return [np.nan] * len(quantiles)
-
-        diffs_days = np.diff(ts) / np.timedelta64(1, 'D')
-        return np.quantile(diffs_days, quantiles)
-
-    result = np.vstack([
-        compute_row_quantiles(ts)
-        for ts in df['timestamps']
-    ])
-    df[q_cols] = result
-    print("Added quantiles for the number of days between actions in the journey.")
-
-    df['first_event'] = [events[0] for events in df['events']]
-    print("Added first event id in journey.")
 
     repeatable_events = [1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 15, 16, 18, 19, 21, 22, 23, 24, 26, 27, 29]
     event_counts = df['events'].apply(Counter)
@@ -167,13 +146,6 @@ def create_journey_features(input_file, output_file):
     for milestone in range(1, 6):
         df[f'days_to_milestone_{milestone}'] = [(timestamps[np.where(np.isin(events, milestone_to_events[milestone]))[0][0]] - timestamps[0]) / np.timedelta64(1, 'D') if indicator else np.nan for timestamps, events, indicator in zip(df['timestamps'], df['events'], df[f'reached_milestone_{milestone}'])]
     print("Added the number of days until each milestone was achieved during the journey.")
-
-    df['customer_id'] = df['id'].apply(lambda x: x.split(' ')[0])
-    
-    df2 = pd.read_parquet("data/train_data2_flattened.parquet")
-    df2['customer_id'] = df2['id'].apply(lambda x: x.split(' ')[0])
-    df2['successful'] = [28 in row.events for row in df2.itertuples(index=False)]
-    df2['start_date'] = [pd.Timestamp(row.timestamps[0], tz='UTC') for row in df2.itertuples(index=False)]
 
     df.to_parquet(f'data/{output_file}.parquet', index=False)
     print("Successfully created parquet file.")
