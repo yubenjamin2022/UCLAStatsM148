@@ -118,6 +118,52 @@ def create_journey_features(input_file, output_file):
     df['days_into_journey'] = [(current_datetime - first_datetime) / np.timedelta64(1, 'D') for current_datetime, first_datetime in zip(df['current_datetime'], df['start_date'])]
     print("Added number of days since the journey began.")
 
+    df['last_event'] = df['events'].apply(lambda x: x[-1])
+    print("Added last event in journey")
+
+    df["days_since_last_event"] = [
+        (cur - ts[-1]) / np.timedelta64(1, 'D') for ts, cur in zip(df["timestamps"], df["current_datetime"].dt.tz_localize(None))
+    ]
+    print("Added number of days since last event.")
+
+    n = len(df)
+    result = np.empty(n, dtype=np.float32)  # float32 saves memory
+    result[:] = np.nan
+
+    current_dt = df['current_datetime'].dt.tz_localize(None).values
+
+    for i, (events, timestamps) in enumerate(zip(df['events'], df['timestamps'])):
+        
+        # scan backwards to find last valid event
+        for j in range(len(events) - 1, -1, -1):
+            if events[j] not in (1, 20, 21):
+                delta = current_dt[i] - timestamps[j]
+                result[i] = delta / np.timedelta64(1, 'D')
+                break
+
+    df['days_since_last_user_event'] = result
+    print("Added days since last user action")
+
+    quantiles = [0.25, 0.5, 0.75, 0.85, 0.9, 0.95, 1]
+    q_cols = [f"days_between_actions_q_{int(q*100)}" for q in quantiles]
+    def compute_row_quantiles(ts):
+        ts = np.asarray(ts)
+        if ts.size < 2:
+            return [np.nan] * len(quantiles)
+
+        diffs_days = np.diff(ts) / np.timedelta64(1, 'D')
+        return np.quantile(diffs_days, quantiles)
+
+    result = np.vstack([
+        compute_row_quantiles(ts)
+        for ts in df['timestamps']
+    ])
+    df[q_cols] = result
+    print("Added quantiles for the number of days between actions in the journey.")
+
+    df['first_event'] = [events[0] for events in df['events']]
+    print("Added first event id in journey.")
+    
     repeatable_events = [1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 13, 15, 16, 18, 19, 21, 22, 23, 24, 26, 27, 29]
     event_counts = df['events'].apply(Counter)
     counts_df = (
