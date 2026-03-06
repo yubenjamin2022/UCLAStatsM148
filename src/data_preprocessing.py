@@ -55,7 +55,7 @@ def flatten_journeys(input_file, output_file):
     df.to_parquet(f"data/{output_file}.parquet", index=False)
     print("Successfully created parquet file.")
 
-def create_journey_features(input_file, output_file):
+def create_journey_features(input_file, output_file, is_test_df=False):
     """
     Adds features to each journey that will be used to classify journeys as successful or unsuccessful.
     
@@ -73,15 +73,13 @@ def create_journey_features(input_file, output_file):
 
     df['customer_id'] = df['id'].str.partition(' ')[0].astype('str')
     df2['customer_id'] = df2['id'].str.partition(' ')[0].astype('str')
-
-    df['start_date'] = pd.to_datetime(df['timestamps'].str[0], utc=True)
-    df['end_timestamp'] = pd.to_datetime(df['timestamps'].str[-1], utc=True)
     df2['start_date'] = pd.to_datetime(df2['timestamps'].str[0], utc=True)
 
-    current_datetime = df['end_timestamp'].max()
-
-    df['current_datetime'] = current_datetime
-    df['end_timestamp'] = current_datetime
+    if is_test_df:
+        df['start_date'] = pd.to_datetime(df['timestamps'].str[0], utc=True)
+        df['end_timestamp'] = pd.to_datetime(df['timestamps'].str[-1], utc=True)
+        current_datetime = df['end_timestamp'].max()
+        df['current_datetime'] = current_datetime
 
 
     df2['successful'] = df2['events'].map(lambda x: 28 in x).astype('int8')
